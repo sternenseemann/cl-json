@@ -11,7 +11,7 @@
 
 ;;; Custom variables
 
-(eval-when (:compile-toplevel :load-toplevel)
+(eval-when (:compile-toplevel :load-toplevel :execute)
 
 (defvar *custom-vars* nil)
 
@@ -45,7 +45,7 @@
 )
 
 (defmacro define-custom-var ((key name) &rest other-args)
-  `(eval-when (:compile-toplevel :load-toplevel)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
      (progn (pushnew '(,name . ,key) *custom-vars* :test #'equal)
             (defvar ,name ,@other-args))))
 
