@@ -4,10 +4,8 @@
 ;;; All rights reserved.
 ;;; See the file LICENSE for terms of use and distribution.
 
-(in-package #:cl-user)
-
 (defpackage #:json-system
-    (:use #:cl #:asdf))
+  (:use :cl :asdf :uiop))
 
 (in-package #:json-system)
 
@@ -26,8 +24,7 @@
   :maintainer "Robert P. Goldman <rpgoldman@sift.net>"
   :licence "MIT"
   :in-order-to ((test-op (test-op "cl-json/test")))
-  :components ((:static-file "cl-json.asd")
-               (:module :src
+  :components ((:module "src"
                 :components ((:file "package")
                              (:file "common" :depends-on ("package"))
                              #+cl-json-clos
@@ -52,4 +49,5 @@
 
 (defparameter *cl-json-directory*
   (system-relative-pathname "cl-json" ""))
+
 
