@@ -69,6 +69,39 @@
 Strings.  If nil, translate any such sequence to the char after
 slash.")
 
+;;;; UTF-16 magic values and common helper functions
+;;;; actual implementation lives in encoder.lisp and decoder.lisp
+
+(declaim (type (unsigned-byte 16)
+               +utf16-min-surrogate+
+               +utf16-max-surrogate+
+               +utf16-min-low-surrogate+)
+         (type (unsigned-byte 32) +utf16-pair-offset+))
+(defconstant +utf16-min-surrogate+ #xd800)
+(defconstant +utf16-max-surrogate+ #xdfff)
+(defconstant +utf16-min-low-surrogate+ #xdc00)
+(defconstant +utf16-pair-offset+ #x10000)
+
+(declaim (ftype (function ((unsigned-byte 32)) boolean)
+                utf16-high-surrogate-p
+                utf16-low-surrogate-p
+                utf16-surrogate-p)
+         (inline utf16-high-surrogate-p
+                 utf16-low-surrogate-p
+                 utf16-surrogate-p))
+(defun utf16-high-surrogate-p (code)
+  "Check if the given integer represents a high surrogate Unicode codepoint."
+  (and (>= code +utf16-min-surrogate+)
+       (<  code +utf16-min-low-surrogate+)))
+
+(defun utf16-low-surrogate-p (code)
+  "Check if the given integer represents a low surrogate Unicode codepoint."
+  (<= +utf16-min-low-surrogate+ code +utf16-max-surrogate+))
+
+(defun utf16-surrogate-p (code)
+  "Check if the given integer represents a surrogate Unicode codepoint."
+  (<= +utf16-min-surrogate+ code +utf16-max-surrogate+))
+
 
 ;;; Symbols
 

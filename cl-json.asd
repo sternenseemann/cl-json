@@ -36,7 +36,7 @@
                              (:file "json-rpc" :depends-on ("package" "common" "utils" "encoder" "decoder"))))))
 
 (defsystem :cl-json/test
-  :depends-on (:cl-json :fiveam )
+  :depends-on (:cl-json :cl-unicode :fiveam )
   :components ((:module :t
                :components ((:file "package")
                             (:file "testmisc" :depends-on ("package" "testdecoder" "testencoder"))

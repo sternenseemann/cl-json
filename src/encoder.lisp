@@ -376,6 +376,51 @@ STREAM (or to *JSON-OUTPUT*)."
   (write-char #\" stream)
   nil)
 
+(defmacro make-typed-vector (type &rest elements)
+  `(make-array ,(length elements)
+               :element-type ,type
+               :initial-contents
+               (list ,@elements)))
+
+(define-condition utf16-unencodeable-codepoint (type-error) ()
+  (:documentation
+   "Signalled when a codepoint can't be encoded using UTF-16, e.g. if it is
+an isolated surrogate codepoint.")
+  (:report
+   (lambda (condition stream)
+     (with-accessors ((datum type-error-datum))
+         condition
+         (format stream "Can't encode ~16R using UTF-16" datum)
+         (when (utf16-surrogate-p datum)
+           (format stream " because it is a surrogate codepoint"))
+         (format stream "."))))
+  (:default-initargs :expected-type t))
+
+(declaim (ftype (function ((unsigned-byte 32)) (vector (unsigned-byte 16) *))
+                utf16-encode-codepoint))
+(defun utf16-encode-codepoint (code)
+  "Takes a Unicode codepoint and encodes it as one or two UTF-16 code units,
+returned in a vector."
+  ;; Based on The Unicode Standard, Version 14.0.0, Section 3.9
+  (cond
+    ;; Supplementary planes: U+010000 - U+10FFFF
+    ((>= code +utf16-pair-offset+)
+     (let ((minus-offset (- code +utf16-pair-offset+)))
+       (make-typed-vector
+        '(unsigned-byte 16)
+        (+ +utf16-min-surrogate+ (ldb (byte 10 10) minus-offset))
+        (+ +utf16-min-low-surrogate+ (ldb (byte 10 0) minus-offset)))))
+    ;; High and Low Surrogate Codepoints: U+D800 - U+DFFF
+    ;; The Unicode Standard forbids encoding these.
+    ((and (utf16-surrogate-p code) *use-strict-json-rules*)
+     (restart-case
+         (error 'utf16-unencodeable-codepoint :datum code)
+       (substitute-replacement-char ()
+         :report "Substitute the Unicode replacement character."
+         (make-typed-vector '(unsigned-byte 16) #xfffd))))
+    ;; Basic Multilingual Plane: U+0000 - U+D7FF and U+E000 - U+FFFF
+    (t (make-typed-vector '(unsigned-byte 16) code))))
+
 (defun write-json-chars (s stream)
   "Write JSON representations (chars or escape sequences) of
 characters in string S to STREAM."
@@ -389,7 +434,9 @@ characters in string S to STREAM."
      else
        do (let ((special '#.(rassoc-if #'consp +json-lisp-escaped-chars+)))
             (destructuring-bind (esc . (width . radix)) special
-              (format stream "\\~C~V,V,'0R" esc radix width code)))))
+              (loop
+                for code-unit across (utf16-encode-codepoint code)
+                do (format stream "\\~C~V,V,'0R" esc radix width code-unit))))))
 
 (eval-when (:compile-toplevel :execute)
     (if (subtypep 'long-float 'single-float)

@@ -156,28 +156,14 @@ return NIL."
              (escaped-char-dispatch c
                :code-handler
                  ((len rdx)
-                  (let ((code
-                         (let ((repr (make-string len)))
-                           (dotimes (i len)
-                             (setf (aref repr i) (read-char stream)))
-                           (handler-case (parse-integer repr :radix rdx)
-                             (parse-error ()
-                               (json-syntax-error stream esc-error-fmt
-                                                  (format nil "\\~C" c)
-                                                  repr))))))
-                    (restart-case
-                        (or (and (< code char-code-limit) (code-char code))
-                            (error 'no-char-for-code :code code))
-                      (substitute-char (char)
-                        :report "Substitute another char."
-                        :interactive
-                        (lambda ()
-                          (format *query-io* "Char: ")
-                          (list (read-char *query-io*)))
-                        char)
-                      (pass-code ()
-                        :report "Pass the code to char handler."
-                        code))))
+                  (let ((repr (make-string len)))
+                    (dotimes (i len)
+                      (setf (aref repr i) (read-char stream)))
+                    (handler-case (parse-integer repr :radix rdx)
+                      (parse-error ()
+                        (json-syntax-error stream esc-error-fmt
+                                           (format nil "\\~C" c)
+                                           repr)))))
                  :default-handler
                    (if *use-strict-json-rules*
                        (json-syntax-error stream esc-error-fmt "\\" c)
@@ -390,6 +376,69 @@ closing brace, calling object handlers as it goes."
                    input but found `~A'"
                   token)))))))
 
+(defun bounded-code-to-char (code)
+  "Wrapper around CODE-CHAR which invokes NO-CHAR-FOR-CODE if the passed CODE
+is greater than the implementation's CHAR-CODE-LIMIT, allowing to deal with the
+condition with uniform restarts."
+  (restart-case
+      (or (and (< code char-code-limit) (code-char code))
+          (error 'no-char-for-code :code code))
+    (substitute-char (char)
+      :report "Substitute another char."
+      :interactive
+      (lambda ()
+        (format *query-io* "Char: ")
+        (list (read-char *query-io*)))
+      char)
+    (pass-code ()
+      :report "Pass the code to char handler."
+      code)))
+
+(declaim (ftype (function ((unsigned-byte 16) (unsigned-byte 16)) character)
+                utf16-decode-surrogate-pair))
+(defun utf16-decode-surrogate-pair (high low)
+  "Takes the two UTF-16 code units of a UTF-16 surrogate pair and decodes them
+into a Common Lisp character. Expects the caller to verify that actual surrogates
+are passed."
+  ;; Based on The Unicode Standard, Version 14.0.0, Section 3.9
+  (bounded-code-to-char
+   (+ +utf16-pair-offset+
+      (ash (- high +utf16-min-surrogate+) 10)
+      (- low +utf16-min-low-surrogate+))))
+
+(defun json-surrogate-error (stream expected-high &optional expected-low)
+  "Raises a JSON-SYNTAX-ERROR for the encountered invalid surrogate code point(s)
+and offers restarts allowing to pass in an alternative decoding result which is
+returned."
+  (flet ((format-str-el (x)
+           (format nil
+                   (typecase x
+                     (integer "U+~16,4,'0R")
+                     (character "~C")
+                     (otherwise (if (null x) "end of string" "~A")))
+                   x)))
+    (restart-case
+        (json-syntax-error
+         stream
+         (cond
+           ((utf16-low-surrogate-p expected-high)
+            "Unexpected lone low surrogate code point ~A")
+           ((utf16-high-surrogate-p expected-high)
+            "Expected low-surrogate codepoint after ~A, but got: ~A")
+           (t "Invalid surrogate pair: ~A and ~A"))
+         (format-str-el expected-high)
+         (format-str-el expected-low))
+      (substitute-char (char)
+        :report "Substitute another char."
+        :interactive
+        (lambda ()
+          (format *query-io* "Char: ")
+          (list (read-char *query-io*)))
+        char)
+      (substitute-replacement-char ()
+        :report "Substitute the Unicode replacement character."
+        (bounded-code-to-char #xfffd)))))
+
 (defun decode-json-string (stream)
   "Read JSON String characters / escape sequences until a closing
 double quote, calling string handlers as it goes."
@@ -398,7 +447,38 @@ double quote, calling string handlers as it goes."
       (loop initially (funcall *beginning-of-string-handler*)
          for c = (read-json-string-char stream)
          while c
-         do (funcall *string-char-handler* c)
+         do (etypecase c
+              ;; Normal characters, named escape sequences
+              (character (funcall *string-char-handler* c))
+              ;; \uXXXX escape sequences
+              (integer
+               (cond
+                 ;; high surrogate: expect a low surrogate escape sequence next
+                 ((utf16-high-surrogate-p c)
+                  (let ((next (read-json-string-char stream)))
+                    (cond
+                      ((and (typep next 'integer) (utf16-low-surrogate-p next))
+                       (funcall *string-char-handler*
+                                (utf16-decode-surrogate-pair c next)))
+                      (*use-strict-json-rules*
+                       (funcall *string-char-handler*
+                                 (json-surrogate-error stream c next)))
+                      (t (progn
+                           (funcall *string-char-handler* (bounded-code-to-char c))
+                           (if next
+                               (funcall *string-char-handler*
+                                        (etypecase next
+                                          (integer (bounded-code-to-char next))
+                                          (character next)))
+                               (return (funcall *end-of-string-handler*))))))))
+                 ;; low surrogate: should never appear on its own
+                 ((utf16-low-surrogate-p c)
+                  (funcall *string-char-handler*
+                           (if *use-strict-json-rules*
+                               (json-surrogate-error stream c)
+                               (bounded-code-to-char c))))
+                 ;; Codepoints in the Basic Multilingual Plane
+                 (t (funcall *string-char-handler* (bounded-code-to-char c))))))
          finally (return (funcall *end-of-string-handler*))))))
 
 ;;; handling numerical read errors in ACL

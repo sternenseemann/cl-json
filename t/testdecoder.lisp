@@ -412,3 +412,63 @@ safe-symbols-parsing function here for a cure."
         (is (equal (symbol-package (first-bound-slot-name x))
                    (find-package :keyword)))))))
 
+(test non-ascii-char-decoding
+  (is (equal `((:foo . ,(string (cl-unicode:character-named "Copyright Sign"))))
+             (with-decoder-simple-list-semantics
+               (decode-json-from-string "{\"foo\":\"\\u00A9\"}")))))
+
+(test non-bmp-char-decoding
+  (is (equal `((:foo . ,(string (cl-unicode:character-named "Grinning Face"))))
+             (with-decoder-simple-list-semantics
+               (decode-json-from-string "{\"foo\":\"\\uD83D\\uDE00\"}"))))
+  (signals error
+    (with-decoder-simple-list-semantics
+      (decode-json-from-string "{\"foo\":\"\\uD83Dabc\"}")))
+  (signals error
+    (with-decoder-simple-list-semantics
+      (decode-json-from-string "{\"foo\":\"\\uD83D\\xDE00\"}"))))
+
+(test surrogate-decoding
+  ;; lone low surrogate
+  (signals error
+    (let ((json:*use-strict-json-rules* t))
+      (with-decoder-simple-list-semantics
+        (decode-json-from-string "\"\\uDC80\""))))
+
+  (is (string= (string (code-char #xdc80))
+               (let ((json:*use-strict-json-rules* nil))
+                 (with-decoder-simple-list-semantics
+                   (decode-json-from-string "\"\\uDC80\"")))))
+
+  ;; high surrogate and end of string
+  (signals error
+    (let ((json:*use-strict-json-rules* t))
+      (with-decoder-simple-list-semantics
+        (decode-json-from-string "\"\\uD800\""))))
+
+  (is (string= (string (code-char #xd800))
+               (let ((json:*use-strict-json-rules* nil))
+                 (with-decoder-simple-list-semantics
+                   (decode-json-from-string "\"\\uD800\"")))))
+
+  ;; high surrogate and normal character
+  (signals error
+    (let ((json:*use-strict-json-rules* t))
+      (with-decoder-simple-list-semantics
+        (decode-json-from-string "\"\\uD800c\""))))
+
+  (is (string= (format nil "~Cc" (code-char #xd800))
+               (let ((json:*use-strict-json-rules* nil))
+                 (with-decoder-simple-list-semantics
+                   (decode-json-from-string "\"\\uD800c\"")))))
+
+  ;; high surrogate and non surrogate escape
+  (signals error
+    (let ((json:*use-strict-json-rules* t))
+      (with-decoder-simple-list-semantics
+        (decode-json-from-string "\"\\uD800\\u0012\""))))
+
+  (is (string= (format nil "~C~C" (code-char #xd800) (code-char #x0012))
+               (let ((json:*use-strict-json-rules* nil))
+                 (with-decoder-simple-list-semantics
+                   (decode-json-from-string "\"\\uD800\\u0012\""))))))

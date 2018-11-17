@@ -471,3 +471,23 @@
       (is (string= json-bar
 "{\"method\":\"fooBarCheck\",\"id\":0,\"params\":{\"bar\":{\"bar\":true},\"isFoo\":false,\"isBar\":true}}")))))
 
+(test non-ascii-char-encoding
+  (is (string= "{\"foo\":\"\\u00A9\"}"
+               (with-explicit-encoder
+                 (json:encode-json-to-string (list :object "foo" (string (cl-unicode:character-named "Copyright Sign"))))))))
+
+(test non-bmp-char-encoding
+  (is (string= "{\"foo\":\"\\uD83D\\uDE00\"}"
+               (with-explicit-encoder
+                 (json:encode-json-to-string (list :object "foo" (string (cl-unicode:character-named "Grinning Face"))))))))
+
+(test surrogate-encoding
+  (signals error
+    (let ((json:*use-strict-json-rules* t))
+      (with-explicit-encoder
+        (json:encode-json-to-string (string (code-char #xdc80))))))
+
+  (is (string= "\"\\uDC80\""
+               (let ((json:*use-strict-json-rules* nil))
+                 (with-explicit-encoder
+                   (json:encode-json-to-string (string (code-char #xdc80))))))))
