@@ -19,7 +19,7 @@
 (defsystem :cl-json
   :name "cl-json"
   :description "JSON in Lisp. JSON (JavaScript Object Notation) is a lightweight data-interchange format."
-  :version "0.5.0"
+  :version "0.6.0"
   :author "Henrik Hjelte <henrik@henrikhjelte.com>"
   :maintainer "Robert P. Goldman <rpgoldman@sift.net>"
   :licence "MIT"
