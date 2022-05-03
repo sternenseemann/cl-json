@@ -1,4 +1,4 @@
-;;; -*- lisp -*-
+;;; -*- Mode: LISP; Syntax: ANSI-COMMON-LISP; Base: 10 -*-
 ;;; Copyright (c) 2006-2012 Henrik Hjelte
 ;;; Copyright (c) 2008 Hans Hübner (code from the program YASON)
 ;;; All rights reserved.
@@ -15,7 +15,7 @@
 
 #-no-cl-json-clos ;; Does not work with SBCL 1.0.17, this is a way to turn it off
 (progn
-  #+(or mcl openmcl cmu sbcl clisp ecl scl lispworks allegro abcl)
+  #+(or mcl openmcl cmu sbcl clisp ecl scl lispworks allegro abcl genera)
   (pushnew :cl-json-clos *features*))
 
 (defsystem :cl-json
