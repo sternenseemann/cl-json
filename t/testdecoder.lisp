@@ -428,6 +428,8 @@ safe-symbols-parsing function here for a cure."
     (with-decoder-simple-list-semantics
       (decode-json-from-string "{\"foo\":\"\\uD83D\\xDE00\"}"))))
 
+;; Can't construct a string with a lone surrogate code point in CCL
+#-ccl
 (test surrogate-decoding
   ;; lone low surrogate
   (signals error

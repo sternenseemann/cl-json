@@ -481,6 +481,8 @@
                (with-explicit-encoder
                  (json:encode-json-to-string (list :object "foo" (string (cl-unicode:character-named "Grinning Face"))))))))
 
+;; Can't construct a string with a lone surrogate code point in CCL
+#-ccl
 (test surrogate-encoding
   (signals error
     (let ((json:*use-strict-json-rules* t))
